@@ -69,16 +69,16 @@ def main(args):
     model.requires_grad_(False)
     model.eval()
 
+    kernel = np.ones((7,7),np.uint8)
     if use_cuda:
         model = model.cuda()
     if use_float16:
         model = model.half()
-
     video_capture = cv2.VideoCapture(source)
     while True:
         ret, image = video_capture.read()
         if ret:
-            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            # image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
             h0, w0 = image.shape[:2]  # orig hw
             r = resized_shape / max(h0, w0)  # resize image to img_size
             input_img = cv2.resize(image, (int(w0 * r), int(h0 * r)), interpolation=cv2.INTER_AREA)
@@ -123,9 +123,17 @@ def main(args):
                                 if index == 1:
                                     mask = np.where(seg_mask_ == index+1 , 255, 0)
                                     mask = mask.astype(np.uint8)
-                mask = cv2.resize(mask,(640,640))
-                cv2.imshow("Blobs", mask)
-                cv2.waitKey(0)
+                for i in range(3):
+                    outmask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+                contours, hierarchy = cv2.findContours(outmask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                parameters = []
+                for contour in contours:
+                    [vx, vy, cx, cy]= cv2.fitLine(contour, cv2.DIST_L2, 0, 0.01, 0.01)
+                    cv2.line(image, (int(cx-vx*w), int(cy-vy*w)), (int(cx+vx*w), int(cy+vy*w)), (0, 255, 0), 5)
+                    coefficients = np.polyfit(np.array([int(cx-vx*w),int(cx+vx*w)]),np.array([int(cy-vy*w),int(cy+vy*w)]), 2)
+                    parameters.append(coefficients)
+                
+                print(parameters)
         else:
                 break
 
@@ -143,8 +151,8 @@ if __name__ == '__main__':
     parser.add_argument('--source', type=str, default='videos/NO20221023-112820-000013F.MP4', help='The demo image folder')
     parser.add_argument('--output', type=str, default='result', help='Output folder')
     parser.add_argument('-w', '--load_weights', type=str, default='weights/hybridnets.pth')
-    parser.add_argument('--conf_thresh', type=restricted_float, default='0.25')
-    parser.add_argument('--iou_thresh', type=restricted_float, default='0.3')
+    parser.add_argument('--conf_thresh', type=restricted_float, default='0.75')
+    parser.add_argument('--iou_thresh', type=restricted_float, default='0.5')
     parser.add_argument('--imshow', type=boolean_string, default=False, help="Show result onscreen (unusable on colab, jupyter...)")
     parser.add_argument('--imwrite', type=boolean_string, default=True, help="Write result to output folder")
     parser.add_argument('--show_det', type=boolean_string, default=False, help="Output detection result exclusively")
